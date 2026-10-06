@@ -58,12 +58,6 @@ encrypt_linux() {
   command -v cryptsetup >/dev/null || dnf install -y cryptsetup
   sgdisk -t 2:8309 "$DISK"
 
-  local sector_size
-  sector_size=$(blockdev --getpbsz "$LINUX_PART")
-  if (( sector_size < 4096 )); then
-    sector_size=4096
-  fi
-
   cryptsetup luksFormat \
     --type luks2 \
     --cipher aes-xts-plain64 \
@@ -72,7 +66,6 @@ encrypt_linux() {
     --pbkdf argon2id \
     --iter-time 5000 \
     --use-urandom \
-    --sector-size "$sector_size" \
     --label OS \
     --force-password \
     "$LINUX_PART"
@@ -88,7 +81,7 @@ encrypt_linux() {
 
 setup_lvm() {
   command -v pvcreate >/dev/null || dnf install -y lvm2
-  pvcreate --dataalignment 1m /dev/mapper/system
+  pvcreate /dev/mapper/system
   vgcreate fedora /dev/mapper/system
 
   echo
@@ -123,7 +116,7 @@ mount_filesystems() {
   mount /dev/fedora/root "$MNT"
   mkdir -p "$MNT/home" "$MNT/boot/efi"
   mount /dev/fedora/home "$MNT/home"
-  mount "$EFI_PART" "$MNT/boot/efi"
+  mount -o umask=0077 "$EFI_PART" "$MNT/boot/efi"
   swapon /dev/fedora/swap
 }
 
@@ -136,8 +129,6 @@ mount_api_filesystems() {
   mount --make-rslave "$MNT/proc"
   mount --rbind /sys "$MNT/sys"
   mount --make-rslave "$MNT/sys"
-  mount --rbind /run "$MNT/run"
-  mount --make-rslave "$MNT/run"
 }
 
 bootstrap() {
@@ -197,6 +188,7 @@ main() {
   mount_filesystems
   mount_api_filesystems
   bootstrap
+  configure_chroot
 }
 
 main "$@"
